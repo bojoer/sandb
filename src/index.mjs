@@ -1,57 +1,109 @@
 const fUnsolvedContracts = '/Temp/unsolved-contracts.txt'; // A global, persistent array of contracts we couldn't solve, so we don't repeatedly log about them.
 
-/** @param {NS} ns **/
+/**
+ * Main function that solves coding contracts.
+ * 
+ * @param {object} ns - The namespace object.
+ */
 export async function main(ns) {
-    if (ns.args.length < 1)
-        ns.tprint('Contractor solver was incorrectly invoked without arguments.')
+    // Check if the function was invoked with the correct arguments
+    if (ns.args.length < 1) {
+        ns.tprint('Contractor solver was incorrectly invoked without arguments.');
+    }
+
+    // Parse the contracts database
     let contractsDb = JSON.parse(ns.args[0]);
-    console.log(contractsDb);
-    
+
+    // Read the unsolved contracts file
+    const fUnsolvedContracts = "unsolved_contracts.txt";
     const fContents = ns.read(fUnsolvedContracts);
+
+    // Parse the notified contracts
     const notified = fContents ? JSON.parse(fContents) : [];
+
+    // Get the current contract info
     const contractInfo = contractsDb;
-        const answer = findAnswer(contractInfo)
-        let notice = null;
-        if (answer != null) {
-            let solvingResult = false;
-            try {
-                solvingResult = ns.codingcontract.attempt(answer, contractInfo.contract, contractInfo.hostname, { returnReward: true })
-                if (solvingResult) {
-                    const message = `Solved ${contractInfo.contract} on ${contractInfo.hostname} (${contractInfo.type}). Reward: ${solvingResult}`;
-                    ns.toast(message, 'success');
-                    ns.tprint(message);
-                } else {
-                    notice = `ERROR: Wrong answer for contract type "${contractInfo.type}" (${contractInfo.contract} on ${contractInfo.hostname}):` +
-                        `\nIncorrect Answer Given: ${JSON.stringify(answer)}`;
-                }
-            } catch (err) {
-                let errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
-                if (err?.stack) errorMessage += '\n' + err.stack;
-                notice = `ERROR: Attemt to solve contract raised an error. (Answer Given: ${JSON.stringify(answer)})` +
-                    `\nWhile unlikely, this could happen if the contract vanished before we had a chance to solve it:\n"${errorMessage}"`;
-            }
-        } else {
-            notice = `WARNING: No solver available for contract type "${contractInfo.type}"`;
-        }
-        if (notice) {
-            if (!notified.includes(contractInfo.contract)) {
-                ns.tprint(notice + `\nContract Info: ${JSON.stringify(contractInfo)}`)
+
+    // Find the answer for the contract
+    const answer = findAnswer(contractInfo);
+
+    // Check if an answer was found
+    if (answer != null) {
+        let solvingResult = false;
+        try {
+            // Attempt to solve the contract
+            solvingResult = ns.codingcontract.attempt(answer, contractInfo.contract, contractInfo.hostname, { returnReward: true });
+
+            // Check if the contract was solved successfully
+            if (solvingResult) {
+                const message = `Solved ${contractInfo.contract} on ${contractInfo.hostname} (${contractInfo.type}). Reward: ${solvingResult}`;
+
+                // Display success message
+                ns.toast(message, 'success');
+                ns.tprint(message);
+            } else {
+                // Generate error notice for wrong answer
+                const notice = `ERROR: Wrong answer for contract type "${contractInfo.type}" (${contractInfo.contract} on ${contractInfo.hostname}):` +
+                    `\nIncorrect Answer Given: ${JSON.stringify(answer)}`;
+
+                // Print and display the error notice
+                ns.tprint(notice + `\nContract Info: ${JSON.stringify(contractInfo)}`);
                 ns.toast(notice, 'warning');
-                notified.push(contractInfo.contract)
+
+                // Add the contract to the notified list
+                notified.push(contractInfo.contract);
             }
-            ns.print(notice + `\nContract Info: ${JSON.stringify(contractInfo)}`);
+        } catch (err) {
+            // Generate error notice for contract solving error
+            let errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
+            if (err?.stack) {
+                errorMessage += '\n' + err.stack;
+            }
+            const notice = `ERROR: Attempt to solve contract raised an error. (Answer Given: ${JSON.stringify(answer)})` +
+                `\nWhile unlikely, this could happen if the contract vanished before we had a chance to solve it:\n"${errorMessage}"`;
+
+            // Print and display the error notice
+            ns.tprint(notice + `\nContract Info: ${JSON.stringify(contractInfo)}`);
+            ns.toast(notice, 'warning');
+
+            // Add the contract to the notified list
+            notified.push(contractInfo.contract);
         }
-        await ns.sleep(10)
+    } else {
+        // Generate warning notice for no solver available
+        const notice = `WARNING: No solver available for contract type "${contractInfo.type}"`;
+
+        // Print and display the warning notice
+        ns.tprint(notice + `\nContract Info: ${JSON.stringify(contractInfo)}`);
+        ns.toast(notice, 'warning');
+    }
+
+    // Wait for 10 seconds
+    await ns.sleep(10);
+
     // Keep tabs of failed contracts
-    if (notified.length > 0)
+    if (notified.length > 0) {
         await ns.write(fUnsolvedContracts, JSON.stringify(notified), "w");
+    }
 }
 
+/**
+ * Finds the answer based on the given contract.
+ *
+ * @param {object} contract - The contract to find the answer for.
+ * @return {any} The answer found or null if no answer is found.
+ */
 function findAnswer(contract) {
     const codingContractSolution = codingContractTypesMetadata.find((codingContractTypeMetadata) => codingContractTypeMetadata.name === contract.type)
     return codingContractSolution ? codingContractSolution.solver(contract.data) : null;
 }
 
+/**
+ * Converts a 2D array to a string.
+ *
+ * @param {Array} arr - The 2D array to be converted.
+ * @return {string} - The string representation of the 2D array.
+ */
 function convert2DArrayToString(arr) {
     const components = []
     arr.forEach(function (e) {
@@ -854,18 +906,43 @@ const codingContractTypesMetadata = [{
 
 {
     name: "Encryption II: Vigenère Cipher",
-    solver: function (data) {
-        // data = [plaintext, keyword]
-        // build char array, shifting via map and corresponding keyword letter and join to final results
-        const cipher = [...data[0]]
-            .map((a, i) => {
-                return a === " "
-                    ? a
-                    : String.fromCharCode(((a.charCodeAt(0) - 2 * 65 + data[1].charCodeAt(i % data[1].length)) % 26) + 65);
-            })
-            .join("");
-        return cipher;
+/**
+ * Generate a cipher text by shifting the characters of a plaintext using a keyword.
+ *
+ * @param {Array} data - An array containing the plaintext and the keyword.
+ * @return {string} - The generated cipher text.
+ */
+solver: function (data) {
+    // Extract the plaintext and keyword from the input data array
+    const plaintext = data[0];
+    const keyword = data[1];
+
+    // Initialize an empty array to store the shifted characters
+    const shiftedChars = [];
+
+    // Iterate over each character in the plaintext
+    for (let i = 0; i < plaintext.length; i++) {
+        const char = plaintext[i];
+
+        // If the character is a space, leave it unchanged
+        if (char === " ") {
+            shiftedChars.push(char);
+        } else {
+            // Calculate the shift amount based on the keyword
+            const shiftAmount = keyword.charCodeAt(i % keyword.length) - 65;
+
+            // Shift the character and add it to the shiftedChars array
+            const shiftedChar = String.fromCharCode(((char.charCodeAt(0) - 2 * 65 + shiftAmount) % 26) + 65);
+            shiftedChars.push(shiftedChar);
+        }
     }
+
+    // Join the shifted characters array to form the cipher text
+    const cipher = shiftedChars.join("");
+
+    // Return the cipher text
+    return cipher;
+}
 }
 
 ]
